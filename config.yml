@@ -1,36 +1,55 @@
 version: 2.1
 
 commands:
-  destroy-environment:
-    description: Destroy back-end and front-end cloudformation stacks given a workflow ID.
-    parameters:
-      # Add parameter here   
+  destroy:
+    description: Destroy all cloudformation stacks with a given workflow ID.
     steps:
       - run:
-          name: Destroy environments
-          when: on_fail
+          name: Delete all files from the S3 bucket created
           command: |
-            # Your code here
-            exit 1
-  revert-migrations:
-    description: Revert the last migration if successfully run in the current workflow.
-    parameters:
-      # Add parameter here     
-    steps:
-      - run:
-          name: Revert migrations
-          # Add when this will run
-          command: |
-            # Curl command here to see if there was a successful migration associated with the workflow id, store result in SUCCESS variable
-            SUCCESS = 1
-            if(( $SUCCESS==1 )); 
+            if aws s3api head-bucket --bucket udapeople-raj01
             then
-            #  cd ~/project/backend
-            #  npm install
-            #  Add revert code here. You can find this in the Getting Started section.
-              exit 1
+              aws s3 rm s3://udapeople-raj01/ --recursive
             fi
-            
+          when: on_fail
+      - run:
+          name: Delete the AWS CloudFormation stacks
+          command: |
+            if aws cloudformation wait stack-exists --stack-name Udapeople-raj01
+            then 
+              aws cloudformation delete-stack --stack-name Udapeople-raj01
+            fi
+            if aws cloudformation wait stack-exists --stack-name UdapeopleB
+            then
+              aws cloudformation delete-stack --stack-name UdapeopleB
+            fi
+          when: on_fail
+
+  revert-migration:
+    description: Revert the latest migration
+    steps:
+      - run:
+          name: Get the public DNS of EC2 instance from https://memstash.io/
+          command: |
+            PUBLIC_DNS=$(curl -H "token: raj01" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            cd .circleci/ansible/
+            echo "[all]" > ./inventory
+            echo ${PUBLIC_DNS} >> ./inventory
+            cat ./inventory
+          when: on_fail
+      - add_ssh_keys:
+          fingerprints: ["33:c8:64:fb:aa:80:1b:63:c6:98:30:9a:c8:8c:9a:14"]
+      - run:
+          name: Revert the last migration
+          command: |
+            printenv >> ./backend/.env
+            cd .circleci/ansible/
+            ansible-playbook -i ./inventory db_rollback.yml
+          when: on_fail
+
+
+
 jobs:
   build-frontend:
     docker:
@@ -38,14 +57,14 @@ jobs:
     steps:
       - checkout
       - restore_cache:
-          keys: [frontend-build]
+          keys: [frontend-build-v1]
       - run:
           name: Build front-end
           command: |
             cd frontend
             npm i
             npm run build
-            npm audit fix --audit-levl=critical --force
+            npm audit fix --audit-level=critical --force
       - save_cache:
           paths: [frontend/node_modules]
           key: frontend-build-v1
@@ -56,213 +75,242 @@ jobs:
     steps:
       - checkout
       - restore_cache:
-          keys: [backend-build]
+          keys: [backend-build-v1]
       - run:
           name: Back-end build
           command: |
-             # Your code here
-             exit 1
+            cd backend
+            npm i
+            npm run build
+            npm audit fix --audit-level=critical --force
       - save_cache:
           paths: [backend/node_modules]
-          key: backend-build
+          key: backend-build-v1
 
   test-frontend:
     docker:
-      # Docker image here
+      - image: circleci/node:13.8.0
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
-                
+      - checkout
+      - restore_cache:
+          keys: [frontend-build-v1]
+      - run:
+          name: front-end test
+          command: |
+            cd backend
+            npm i
+            npm run test
+            npm audit fix --audit-level=critical --force
   test-backend:
     docker:
-      # Docker image here
+      - image: circleci/node:13.8.0
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
-            
+      - checkout
+      - restore_cache:
+          keys: [backend-build-v1]
+      - run:
+          name: Back-end build
+          command: |
+            cd backend
+            npm run test
+            npm audit fix --audit-level=critical --force
   scan-frontend:
     docker:
-      # Docker image here
+      - image: circleci/node:13.8.0
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
-
+      - checkout
+      - restore_cache:
+          keys: [frontend-build-v1]
+      - run:
+          name: front-end scan
+          command: |
+            cd frontend
+            npm i
+            npm audit fix --audit-level=critical --force
   scan-backend:
     docker:
-      # Docker image here
+      - image: circleci/node:13.8.0
     steps:
-      # Checkout code from git
-      # Restore from cache
-      # Your job code here
-
+      - checkout
+      - restore_cache:
+          keys: [backend-build-v1]
+      - run:
+          name: Back-end scan
+          command: |
+            cd backend
+            npm audit fix --audit-level=critical --force
   deploy-infrastructure:
     docker:
-      # Docker image here that supports AWS CLI
+      - image: amazon/aws-cli
     steps:
-      # Checkout code from git
+      - checkout
       - run:
           name: Ensure back-end infrastructure exists
           command: |
             aws cloudformation deploy \
               --template-file .circleci/files/backend.yml \
-              #--tags project=your-tag \
-              # --stack-name "your back-end stack name with workflow id" \
-              # --parameter-overrides ID="your workflow id"  
-              exit 1
+              --tags project=Udapeople_B \
+              --stack-name "UdapeopleB" \
+              --parameter-overrides ID="raj01" 
+      - run:
+          name: Get and save public DNS of EC2 instance to https://memstash.io/
+          command: |
+            PUBLIC_DNS=$(aws ec2 describe-instances --region us-east-1 --filters 'Name=tag:Name,Values=backend-raj01' --query "Reservations[*].Instances[0].PublicDnsName" --output text)
+            echo ${PUBLIC_DNS}
+            curl -H "Content-Type: text/plain" \
+               -H "token: raj01" \
+               --request PUT \
+               --data ${PUBLIC_DNS} \
+               https://api.memstash.io/values/public_dns
       - run:
           name: Ensure front-end infrastructure exist
           command: |
             aws cloudformation deploy \
               --template-file .circleci/files/frontend.yml \
-              #--tags project=your-tag \
-              # --stack-name "your front-end stack name with workflow id" \
-              # --parameter-overrides ID="your workflow id"  
-              exit 1
-      - run:
-          name: Add back-end ip to ansible inventory
-          command: |
-            # Your code here
-            exit 1
-      - persist_to_workspace:
-          root: ~/
-          paths:
-            - project/.circleci/ansible/inventory.txt
-      # Here's where you will add some code to rollback on failure      
+              --tags project=Udapeople_F \
+              --stack-name "Udapeople-raj01" \
+              --parameter-overrides ID="raj01"  
+      - destroy
 
-  configure-infrastructure:
+  deploy-backend:
     docker:
-      # Docker image here that supports Ansible
+      - image: python:3.7-alpine3.11
     steps:
-      # Checkout code from git
-      # Add ssh keys with fingerprint
-      # attach workspace
+      - checkout
       - run:
           name: Install dependencies
           command: |
-            # Your code here
-            exit 1
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update ansible
+            apk add --no-cache openssh-client
+            pip3 install awscli
+      - run:
+          name: Get the public DNS of EC2 instance from https://memstash.io/
+          command: |
+            PUBLIC_DNS=$(curl -H "token: raj01" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            cd .circleci/ansible/
+            echo "[all]" > ./inventory
+            echo ${PUBLIC_DNS} >> ./inventory
+            cat ./inventory
+      - add_ssh_keys:
+          fingerprints: ["33:c8:64:fb:aa:80:1b:63:c6:98:30:9a:c8:8c:9a:14"]  
       - run:
           name: Configure server
           command: |
-            # Your code here
-            exit 1
-      # Here's where you will add some code to rollback on failure      
-
-  run-migrations:
-    docker:
-      # Docker image here that supports NodeJS
-    steps:
-      # Checkout code from git
-      - run:
-          name: Run migrations
-          command: |
-            # Your code here
-            exit 1
-      - run:
-          name: Send migration results to memstash
-          command: |
-            # Your code here
-            exit 1
-     # Here's where you will add some code to rollback on failure      
+            printenv > ./backend/.env
+            cd .circleci/ansible/
+            ansible-playbook -i ./inventory deploy-backend.yml
+      - revert-migration
+      - destroy
 
   deploy-frontend:
     docker:
-      # Docker image here that supports AWS CLI
+      - image: python:3.7-alpine3.11
     steps:
-      # Checkout code from git
+      - checkout
       - run:
-          name: Install dependencies
+          name: Install system dependencies
           command: |
-            # your code here
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update npm
+            pip3 install awscli
       - run:
-          name: Get backend url
+          name: Build the frontend
           command: |
-            # your code here
-            export API_URL="http://${BACKEND_IP}:3030"
-            echo "${API_URL}"
-      - run:
-          name: Deploy frontend objects
+            PUBLIC_DNS=$(curl -H "token: raj01" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            export API_URL="http://${PUBLIC_DNS}:3030"
+            echo API_URL=${API_URL}
+            cd frontend
+            npm install
+            npm run build
+      - run: 
+          name: Copy built frontend files to the S3 bucket
           command: |
-            # your code here
-      # Here's where you will add some code to rollback on failure      
-                    
-  deploy-backend:
-    docker:
-      # Docker image here that supports Ansible
-    steps:
-      # Checkout code from git
-      # Add ssh keys with fingerprint
-      # attach workspace
-      - run:
-          name: Install dependencies
-          command: |
-            # your code here
-      - run:
-          name: Deploy backend
-          command: |
-            # your code here
-      # Here's where you will add some code to rollback on failure  
+            aws s3 cp ./frontend/dist s3://udapeople-raj01/ --recursive
+      - destroy
+
 
   smoke-test:
     docker:
-      # Lightweight Docker image 
+      - image: python:3.7-alpine3.11
     steps:
-      # Checkout code from git
+      - checkout
       - run:
-          name: Install dependencies
+          name: Install system dependencies
           command: |
-            # your code here
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update ansible
+            apk add --no-cache openssh-client
+            pip3 install awscli
       - run:
-          name: Get backend url
+          name: Smoke test on frontend
           command: |
-            # your code here
+            URL="http://udapeople-raj01.s3-website.us-east-2.amazonaws.com/#/employees"
+            if curl -s ${URL} | grep "Welcome"
+            then
+              return 1
+            else
+              return 0
+            fi
       - run:
-          name: Backend smoke test.
+          name: Smoke test on backend
           command: |
-            # your code here
-      - run:
-          name: Frontend smoke test.
-          command: |
-            # your code here
-      # Here's where you will add some code to rollback on failure  
+            PUBLIC_DNS=$(curl -H "token: raj01" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            if curl -s "http://${PUBLIC_DNS}:3030/api/status" | grep "ok"
+            then
+              return 0
+            else
+              return 1
+            fi
+      - revert-migration
+      - destroy
 
   cloudfront-update:
     docker:
-      # Docker image here that supports AWS CLI
+      - image: amazon/aws-cli
     steps:
-      # Checkout code from git
-      - run:
-          name: Install dependencies
-          command: |
-            # your code here
+      - checkout
       - run:
           name: Update cloudfront distribution
           command: |
-            # your code here
-      # Here's where you will add some code to rollback on failure  
-
-cleanup:
+            aws cloudformation deploy \
+              --stack-name udapeople-cloudfront \
+              --template-file .circleci/files/cloudfront.yml \
+              --region ${AWS_DEFAULT_REGION} \
+              --parameter-overrides WorkflowID="raj01"
+      - destroy
+  cleanup:
     docker:
-      # Docker image here
+      - image: amazon/aws-cli
     steps:
-      # Checkout code from git
+      - checkout
       - run:
           name: Get old stack workflow id
           command: |
-            # your code here
-            export OldWorkflowID="the id here"
-            export STACKS=[] #put the list of stacks here
-      - run:
-          name: Remove old stacks and files
-          command: |
-            if [[ "${STACKS[@]}" =~ "${OldWorkflowID}" ]]
+            OLD_WORKFLOW_ID=$(aws cloudformation list-exports --query "Exports[?Name=='CircleCI-WorkflowID'].Value" --output text)
+            echo OLD_WORKFLOW_ID=${OLD_WORKFLOW_ID}
+            STACKS=$(aws cloudformation list-stacks --query "StackSummaries[*].StackName" --stack-status-filter UPDATE_COMPLETE CREATE_COMPLETE --output text)
+            echo STACKS=${STACKS}
+            echo "Remove old stacks and files"
+            if [ -n "${OLD_WORKFLOW_ID}" ] && [[ "${STACKS[@]}" =~ "${OldWorkflowID}" ]]
             then
-              # your code here
-            fi
-            
+                echo deleting all files at S3 bucket udapeople-${OLD_WORKFLOW_ID}
+                aws s3 rm s3://udapeople-${OLD_WORKFLOW_ID}/ --recursive
+                echo deleting stack Udapeople-raj01
+                aws cloudformation delete-stack --stack-name Udapeople-raj01
+                echo deleting stack UdapeopleB
+                aws cloudformation delete-stack --stack-name UdapeopleB
+              fi
+      - destroy
+
+
+
 workflows:
   default:
     jobs:
@@ -280,18 +328,30 @@ workflows:
           requires: [test-frontend, test-backend, scan-frontend, scan-backend]
           filters:
             branches:
-              only: [test-feature-branch]
-      - configure-infrastructure:
-          requires: [deploy-infrastructure]
-      - run-migrations:
-          requires: [configure-infrastructure]
-      - deploy-frontend:
-          requires: [run-migrations]
+              only: main
       - deploy-backend:
-          requires: [run-migrations]
+          requires: [deploy-infrastructure]
+          filters:
+            branches:
+              only: main
+      - deploy-frontend:
+          requires: [deploy-backend]
+          filters:
+            branches:
+              only: main
       - smoke-test:
-          requires: [deploy-backend, deploy-frontend]
+          requires: [deploy-frontend]
+          filters:
+            branches:
+              only: main
       - cloudfront-update:
           requires: [smoke-test]
+          filters:
+            branches:
+              only: main
       - cleanup:
           requires: [cloudfront-update]
+          filters:
+            branches:
+              only: main
+
