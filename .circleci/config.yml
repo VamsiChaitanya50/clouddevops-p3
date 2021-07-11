@@ -42,11 +42,13 @@ jobs:
       - run:
           name: Build front-end
           command: |
-            # Your code here
-            exit 1
+            cd frontend
+            npm i
+            npm run build
+            npm audit fix --audit-levl=critical --force
       - save_cache:
           paths: [frontend/node_modules]
-          key: frontend-build
+          key: frontend-build-v1
 
   build-backend:
     docker:
@@ -293,4 +295,3 @@ workflows:
           requires: [smoke-test]
       - cleanup:
           requires: [cloudfront-update]
-© 2021 GitHub, Inc.
