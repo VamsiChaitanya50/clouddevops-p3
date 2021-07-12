@@ -67,6 +67,36 @@ jobs:
       - save_cache:
           paths: [backend/node_modules]
           key: backend-build-v1
+          
+  test-frontend:
+    docker:
+      - image: circleci/node:13.8.0
+    steps:
+      - checkout
+      - restore_cache:
+          keys: [frontend-build-v1]      
+      - run:
+          name: front-end test
+          command: |
+            cd frontend
+            npm i
+            npm run test
+            npm audit fix --audit-level=critical --force
+            
+  test-backend:
+    docker:
+      - image: circleci/node:13.8.0
+    steps:
+      - checkout
+      - restore_cache:
+           keys: [backend-build-v1]
+      - run:
+          name: back-end test
+          command: |
+            cd backend
+            npm i
+            npm run test
+            npm audit fix --audit-level=critical --force    
             
 workflows:
   default:
