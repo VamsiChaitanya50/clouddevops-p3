@@ -103,5 +103,5 @@ workflows:
           requires:
               - build-frontend
       - test-backend
-          required:
+          requires:
               - build-backend
