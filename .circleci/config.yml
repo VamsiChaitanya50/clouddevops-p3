@@ -142,6 +142,14 @@ jobs:
                 --template-file .circleci/files/backend.yml \
                 --parameter-overrides ID="prod-${CIRCLE_WORKFLOW_ID:0:7}" \
                 --stack-name udapeople-backend-prod-${CIRCLE_WORKFLOW_ID:0:7}
+        - run:
+          name: Ensure front-end infrastructure exist
+          command: |
+            aws cloudformation deploy \
+              --template-file .circleci/files/frontend.yml \
+              --tags project=udapeople \
+              --stack-name "frontend-${CIRCLE_WORKFLOW_ID:0:7}" \
+              --parameter-overrides ID=${CIRCLE_WORKFLOW_ID:0:7} 
     
 workflows:
   default:
