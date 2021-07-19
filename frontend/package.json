@@ -7,7 +7,7 @@
   "description": "A frontend boilerplate with React, Redux and Typescript",
   "main": "index.js",
   "scripts": {
-    "test": "jest",
+    "test:cov": "jest --coverage --maxWorkers=1",
     "test:watch": "jest --watch",
     "pretest:cov": "npm run lint",
     "start": "webpack-dev-server --mode development --hot --progress --color --port 3000 --open",
