@@ -2,28 +2,19 @@ version: 2.1
 
 commands:
   destroy_environment:
-    description: Destroy Cloud Formation Stacks and infrastructure
+    description: Destroy backend and frontend cloudformation stacks given a workflow ID.
     parameters:
-      when:
-        type: string
-      id:
+      workflow_id:
         type: string
     steps:
       - run:
-          name: Destroy udapeople backend cfn stack
+          name: Destroy environments
+          when: on_fail
           command: |
-            aws cloudformation delete-stack --stack-name udapeople-backend-<< parameters.id >>
-          environment:
-            TERM: xterm-256color
-          when: << parameters.when >>
-      - run:
-          name: Destroy udapeople frontend cfn stack and S3 bucket
-          command: |
-            aws s3 rm s3://udapeople-<< parameters.id >> --recursive
-            aws cloudformation delete-stack --stack-name udapeople-frontend-<< parameters.id >>
-          environment:
-              TERM: xterm-256color
-          when: << parameters.when >>
+            echo "Destroying environment: <<parameters.workflow_id>> "
+            aws cloudformation delete-stack --stack-name udapeople-backend-prod-<<parameters.workflow_id>>
+            aws s3 rm s3://udapeople-prod-<<parameters.workflow_id>> --recursive
+            aws cloudformation delete-stack --stack-name udapeople-frontend-prod-<<parameters.workflow_id>>
           
   revert-migrations:
     description: Revert the last migration if successfully run in the current workflow.
@@ -139,19 +130,19 @@ jobs:
             npm i
             npm audit fix --audit-level=critical
   
- deploy_backend_infrastructure:
-    docker:
-      - image: amazon/aws-cli
-    steps:
-      - checkout
-      - run:
-          name: Deploy the backend infrastructure using cloudformation
-          command: |
-            aws cloudformation deploy \
-              --template-file .circleci/cloudformation/backend_infrastructure.yml \
-              --parameter-overrides ID="prod-${CIRCLE_WORKFLOW_ID:0:7}" \
-              --stack-name udapeople-backend-prod-${CIRCLE_WORKFLOW_ID:0:7}
-  
+  deploy_backend_infrastructure:
+      docker:
+        - image: amazon/aws-cli
+      steps:
+        - checkout
+        - run:
+            name: Deploy the backend infrastructure using cloudformation
+            command: |
+              aws cloudformation deploy \
+                --template-file .circleci/cloudformation/backend_infrastructure.yml \
+                --parameter-overrides ID="prod-${CIRCLE_WORKFLOW_ID:0:7}" \
+                --stack-name udapeople-backend-prod-${CIRCLE_WORKFLOW_ID:0:7}
+    
 workflows:
   default:
     jobs:
@@ -165,7 +156,7 @@ workflows:
           requires: [build-frontend]
       - scan-backend:
           requires: [build-backend]
-      - deploy-backend-infrastructure:
+      - deploy_backend_infrastructure:
           requires: [test-frontend, test-backend, scan-frontend, scan-backend]
           filters:
             branches:
