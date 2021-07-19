@@ -139,7 +139,7 @@ jobs:
             name: Deploy the backend infrastructure using cloudformation
             command: |
               aws cloudformation deploy \
-                --template-file .circleci/cloudformation/backend.yml \
+                --template-file .circleci/files/backend.yml \
                 --parameter-overrides ID="prod-${CIRCLE_WORKFLOW_ID:0:7}" \
                 --stack-name udapeople-backend-prod-${CIRCLE_WORKFLOW_ID:0:7}
     
