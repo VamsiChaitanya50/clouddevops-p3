@@ -154,13 +154,6 @@ jobs:
                 --data ${PUBLIC_DNS} \
                 https://api.memstash.io/values/public_dns
         
-        - run: yum -y install tar gzip
-        - persist_to_workspace:
-            root: ~/
-            paths:
-              - project/.circleci/outputs/backend_url.txt
-              - project/.circleci/ansible/inventory.txt
-        
         - run:
             name: Ensure front-end infrastructure exist
             command: |
