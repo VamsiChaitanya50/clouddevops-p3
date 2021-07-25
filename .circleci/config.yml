@@ -130,7 +130,7 @@ jobs:
             npm i
             npm audit fix --audit-level=critical
   
-  deploy_backend_infrastructure:
+  deploy_infrastructure:
       docker:
         - image: amazon/aws-cli
       steps:
@@ -142,6 +142,25 @@ jobs:
                 --template-file .circleci/files/backend.yml \
                 --parameter-overrides ID="prod-${CIRCLE_WORKFLOW_ID:0:7}" \
                 --stack-name udapeople-backend-prod-${CIRCLE_WORKFLOW_ID:0:7}
+        
+        - run:
+          name: Get and save public DNS of EC2 instance to https://memstash.io/
+          command: |
+            PUBLIC_DNS=$(aws ec2 describe-instances --region us-east-1 --filters 'Name=tag:Name,Values=backend-prod-${CIRCLE_WORKFLOW_ID:0:7}' --query "Reservations[*].Instances[0].PublicDnsName" --output text)
+            echo ${PUBLIC_DNS}
+            curl -H "Content-Type: text/plain" \
+               -H "token: prod-${CIRCLE_WORKFLOW_ID:0:7}" \
+               --request PUT \
+               --data ${PUBLIC_DNS} \
+               https://api.memstash.io/values/public_dns
+        
+        - run: yum -y install tar gzip
+        - persist_to_workspace:
+            root: ~/
+            paths:
+              - project/.circleci/outputs/backend_url.txt
+              - project/.circleci/ansible/inventory.txt
+
         - run:
             name: Ensure front-end infrastructure exist
             command: |
@@ -149,7 +168,9 @@ jobs:
                 --template-file .circleci/files/frontend.yml \
                 --parameter-overrides ID="prod-${CIRCLE_WORKFLOW_ID:0:7}" \
                 --stack-name "udapeople-frontend-prod-${CIRCLE_WORKFLOW_ID:0:7}"
-    
+                
+        - destroy        
+   
 workflows:
   default:
     jobs:
