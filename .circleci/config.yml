@@ -176,7 +176,7 @@ jobs:
                 --stack-name "udapeople-frontend-prod-${CIRCLE_WORKFLOW_ID:0:7}"
         - destroy
         
- deploy-backend:
+  deploy-backend:
     docker:
       - image: python:3.7-alpine3.11
     steps:
@@ -256,7 +256,7 @@ workflows:
             branches:
               only: main    
       - deploy-backend:
-          requires: [deploy-infrastructure]
+          requires: [deploy_infrastructure]
           filters:
             branches:
               only: main
