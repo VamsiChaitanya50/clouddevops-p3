@@ -1,39 +1,52 @@
 version: 2.1
 
 commands:
-  destroy_environment:
-    description: Destroy backend and frontend cloudformation stacks given a workflow ID.
-    parameters:
-      workflow_id:
-        type: string
+  destroy:
+    description: Destroy all cloudformation stacks with a given workflow ID.
     steps:
       - run:
-          name: Destroy environments
-          when: on_fail
+          name: Delete all files from the S3 bucket created
           command: |
-            echo "Destroying environment: <<parameters.workflow_id>> "
-            aws cloudformation delete-stack --stack-name udapeople-backend-prod-<<parameters.workflow_id>>
-            aws s3 rm s3://udapeople-prod-<<parameters.workflow_id>> --recursive
-            aws cloudformation delete-stack --stack-name udapeople-frontend-prod-<<parameters.workflow_id>>
-          
-  revert-migrations:
-    description: Revert the last migration if successfully run in the current workflow.
-    parameters:
-      # Add parameter here     
-    steps:
-      - run:
-          name: Revert migrations
-          # Add when this will run
-          command: |
-            # Curl command here to see if there was a successful migration associated with the workflow id, store result in SUCCESS variable
-            SUCCESS = 1
-            if(( $SUCCESS==1 )); 
+            if aws s3api head-bucket --bucket udapeople-prod-${CIRCLE_WORKFLOW_ID:0:7}
             then
-            #  cd ~/project/backend
-            #  npm install
-            #  Add revert code here. You can find this in the Getting Started section.
-              exit 1
+              aws s3 rm s3://udapeople-prod-${CIRCLE_WORKFLOW_ID:0:7} --recursive
             fi
+          when: on_fail
+      - run:
+          name: Delete the AWS CloudFormation stacks
+          command: |
+            if aws cloudformation wait stack-exists --stack-name udapeople-backend-prod-${CIRCLE_WORKFLOW_ID:0:7}
+            then 
+              aws cloudformation delete-stack --stack-name udapeople-backend-prod-${CIRCLE_WORKFLOW_ID:0:7}
+            fi
+            if aws cloudformation wait stack-exists --stack-name udapeople-frontend-prod-${CIRCLE_WORKFLOW_ID:0:7}
+            then
+              aws cloudformation delete-stack --stack-name udapeople-frontend-prod-${CIRCLE_WORKFLOW_ID:0:7}
+            fi
+          when: on_fail
+
+  revert-migration:
+    description: Revert the latest migration
+    steps:
+      - run:
+          name: Get the public DNS of EC2 instance from https://memstash.io/
+          command: |
+            PUBLIC_DNS=$(curl -H "token: prod-${CIRCLE_WORKFLOW_ID:0:7}" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            cd .circleci/ansible/
+            echo "[all]" > ./inventory
+            echo ${PUBLIC_DNS} >> ./inventory
+            cat ./inventory
+          when: on_fail
+      - add_ssh_keys:
+          fingerprints: ["74:e2:7a:4e:1a:2c:2f:79:ab:73:fd:7c:cb:a7:9d:a5"]
+      - run:
+          name: Revert the last migration
+          command: |
+            printenv >> ./backend/.env
+            cd .circleci/ansible/
+            ansible-playbook -i ./inventory db_rollback.yml
+          when: on_fail
             
 jobs:
   build-frontend:
@@ -161,8 +174,69 @@ jobs:
                 --template-file .circleci/files/frontend.yml \
                 --parameter-overrides ID="prod-${CIRCLE_WORKFLOW_ID:0:7}" \
                 --stack-name "udapeople-frontend-prod-${CIRCLE_WORKFLOW_ID:0:7}"
+        - destroy
+        
+ deploy-backend:
+    docker:
+      - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update ansible
+            apk add --no-cache openssh-client
+            pip3 install awscli
+      - run:
+          name: Get the public DNS of EC2 instance from https://memstash.io/
+          command: |
+            PUBLIC_DNS=$(curl -H "token: prod-${CIRCLE_WORKFLOW_ID:0:7}" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            cd .circleci/ansible/
+            echo "[all]" > ./inventory
+            echo ${PUBLIC_DNS} >> ./inventory
+            cat ./inventory
+      - add_ssh_keys:
+          fingerprints: ["74:e2:7a:4e:1a:2c:2f:79:ab:73:fd:7c:cb:a7:9d:a5"]  
+      - run:
+          name: Configure server
+          command: |
+            printenv > ./backend/.env
+            cd .circleci/ansible/
+            ansible-playbook -i ./inventory deploy-backend.yml
+      - revert-migration
+      - destroy
 
- 
+  deploy-frontend:
+    docker:
+      - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - run:
+          name: Install system dependencies
+          command: |
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update npm
+            pip3 install awscli
+      - run:
+          name: Build the frontend
+          command: |
+            PUBLIC_DNS=$(curl -H "token: prod-${CIRCLE_WORKFLOW_ID:0:7}" --request GET https://api.memstash.io/values/public_dns)
+            echo ${PUBLIC_DNS}
+            export API_URL="http://${PUBLIC_DNS}:3030"
+            echo API_URL=${API_URL}
+            cd frontend
+            npm install
+            npm run build
+      - run: 
+          name: Copy built frontend files to the S3 bucket
+          command: |
+            aws s3 cp ./frontend/dist s3://udapeople-prod-${CIRCLE_WORKFLOW_ID:0:7} --recursive
+      - destroy
+
 workflows:
   default:
     jobs:
@@ -181,3 +255,13 @@ workflows:
           filters:
             branches:
               only: main    
+      - deploy-backend:
+          requires: [deploy-infrastructure]
+          filters:
+            branches:
+              only: main
+      - deploy-frontend:
+          requires: [deploy-backend]
+          filters:
+            branches:
+              only: main       
