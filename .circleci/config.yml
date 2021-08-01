@@ -304,3 +304,8 @@ workflows:
           filters:
             branches:
               only: main       
+      - smoke-test:
+          requires: [deploy-frontend]
+          filters:
+            branches:
+              only: main
