@@ -1,24 +1,34 @@
-- name: "install node 12.X"
-  shell: |
-    curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
-    sudo apt -y upgrade
-    sudo apt install -y nodejs
+---
+- name: "Creates backend app directory"
+  file:
+    path: ~/backend_app
+    state: directory
 
-- name: "install pm2 by npm"
-  become: true
-  npm:
-    name: pm2
-    global: yes
-    production: yes
-    state: present
-
-- name: "copy files from CircleCI to server"
+- name: "Copy compiled backend app"
   copy:
-    src: /root/project/backend
-    dest: /home/ubuntu/
+    src: dist.zip
+    dest: "~/backend_app/dist.zip"
 
-
-- name: "install package dependencies"
+- name: "Unzip backend files to correct directory"
   shell: |
-    cd /home/ubuntu/backend    
-    npm install 
+    cd ~/backend_app
+    unzip dist.zip
+    rm -rf dist.zip
+- name: "Install dependencies for project"
+  shell: |
+    cd ~/backend_app
+    npm install
+- name: "Executing node"
+  shell: |
+    export
+    cd ~/backend_app
+    pm2 start main.js
+  register: execute_node
+
+- name: print message
+  debug:
+    msg: "{{ execute_node.stdout_lines }}"
+
+- name: "Configure pm2 to start as service"
+  shell: |
+    env PATH=$PATH:/usr/local/bin pm2 startup -u ubuntu
