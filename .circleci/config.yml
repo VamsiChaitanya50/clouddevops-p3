@@ -359,14 +359,14 @@ workflows:
             - analyze_frontend
           filters:
             branches:
-              only: [ master ]
+              only: [ main ]
       - deploy_frontend_infrastructure:
           requires:
             - analyze_backend
             - analyze_frontend
           filters:
             branches:
-              only: [ master ]
+              only: [ main ]
       - run_db_migrations_for_backend:
           requires:
             - deploy_backend_infrastructure
