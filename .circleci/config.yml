@@ -52,12 +52,15 @@ jobs:
       - image: circleci/node:13.8.0
     steps:
       - checkout
-      - run: npm i --prefix frontend
-      - run: npm run lint --prefix frontend
-      - persist_to_workspace:
-          root: ~/
-          paths:
-            - project/frontend/node_modules
+      - restore_cache:
+          keys: [frontend-build-v1]
+      - run:
+          name: Build front-end
+          command: |
+            cd frontend
+            npm i
+            npm run build
+            npm audit fix --audit-level=critical --force
 
   test_backend:
     docker:
